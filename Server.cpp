@@ -28,6 +28,7 @@ const string FORBIDDEN_RESPONSE = "HTTP/1.1 403 Forbidden\r\n";
 const string BAD_REQUEST_RESPONSE = "HTTP/1.1 400 Bad Request\r\n";
 const string SECRET_FILE = "SecretFile.html";
 const int CONNECTION_REQUEST_MAX = 10;
+const int BUFSIZE = 1500;
 
 struct Socket {
     int serverSd; //server socket File Descriptor
@@ -41,6 +42,11 @@ map<pthread_t, int> activeSD; //used to manage all active socket threads
 int establishConnection(int portNum, Socket initial);
 
 static void *getRequest(void *threadData);
+
+
+int parseInput(int newSocket, string &input);
+
+string createResponse(string input)
 
 int main(int argc, char *argv[]) {
     /*
@@ -133,13 +139,49 @@ int establishConnection(int portNum, Socket initial) {
 static void *getRequest(void *threadData) {
 
     int newSocket = *((int *) threadData);
-    bool isGet=false;
-    while(true){
-        string input=parseInput(newSocket);
-    }
+    string input;
+    parseInput(newSocket, input);
+    string output=createResponse(input);
 }
 
-string parseInput(int newSocket){
-    string response="";
+int parseInput(int newSocket, string &input) {
 
+    input = "";
+    char current = 0;
+    char prev = 0;
+    while (true) {
+        if (read(newSocket, &current, 1) == -1) {
+            cerr << "Unable to Read from Socket" << endl;
+            return -1;
+        }
+        input += current;
+        if (input.substr(input.length() - 4, 4) == "\r\n\r\n")
+            break;
+    }
+    return 0;
+}
+
+string createResponse(string input) {
+    if (input.substr(0,3)!="GET")
+        return BAD_REQUEST_RESPONSE;
+    string path=input.substr(4, input.length()-9);
+    if (path.substr(0,2)=="..")
+        return FORBIDDEN_RESPONSE;
+    if (path.substr(path.length()-15)==SECRET_FILE){
+        return UNAUTHORIZED_RESPONSE;
+    }
+    FILE *file = fopen(path.c_str(), "r");
+    if (file==nullptr){
+        if (errno==EACCES)
+            return UNAUTHORIZED_RESPONSE;
+        return DOES_NOT_EXIST_RESPONSE;
+    }
+    string output="";
+    while (!feof(file)){
+        char c = fgetc(file);
+        if (c==EOF)
+            continue;
+        output+=c;
+    }
+    return output;
 }
