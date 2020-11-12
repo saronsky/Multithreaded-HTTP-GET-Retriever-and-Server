@@ -55,7 +55,7 @@ string parseHeader(int socketD) {
  * @return -1 if failed. else outputs file to OUTPUT_FILE_DESTINATION
  * */
 int getRequestFile(int socketD, char* argValues[]) {
-    string getRequest = string("GET " + string(argValues[2]) + "HTTP/1.1\r\nHost: " + string(argValues[1]) + "\r\n\r\n");
+    string getRequest = string("GET " + string(argValues[2]) + "HTTP/1.0\r\n\r\n");
     send(socketD, getRequest.c_str(), sizeof(getRequest.c_str()), 0);
     //read/parse header
     parseHeader(socketD);
