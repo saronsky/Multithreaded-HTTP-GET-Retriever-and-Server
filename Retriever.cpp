@@ -1,83 +1,93 @@
-//
-// Created by Simon on 11/11/2020.
-//
+#include <iostream>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <fstream>
+#include <cstring>
 
-#include <sys/types.h>      //socket, bind
-#include <sys/socket.h>     //socket, bind, listen, inet_ntoa
-#include <sys/time.h>       //gettimeofday
-#include <netinet/in.h>     //htonl, htons, inet_ntoa
-#include <arpa/inet.h>      //inet_ntoa
-#include <netdb.h>          //gethostbyname
-#include <unistd.h>         //read, write, close
-#include <strings.h>        //bzero
-#include <netinet/tcp.h>    //SO_REUSEADDR
-#include <sys/uio.h>        //writev
-#include <pthread.h>        //pthread_t
-#include <chrono>           //usec
-#include <stdio.h>          //printf
-#include <iostream>         //cerr
-#include <map>
+using std::ofstream;
+using std::string;
+string OUTPUT_FILE_DESTINATION = "outputFile.txt";
 
-using namespace std;
+/**
+ * Sets up a socket connection based on command line arguments
+ * @param argValues - values from the command line
+ * @return -1 for failure. else return socket number
+ * */
+int connectSocket(char *argValues[]) {
+    int socketSetup;
+    struct addrinfo hints;
+    struct addrinfo *serverInfo;
+    memset(&hints, 0, sizeof(hints));
+    //setting up address information
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+    int socketAddrInfo = getaddrinfo(argValues[1], "80", &hints, &serverInfo); //using the magic number 80 for HTML/HTTP request
 
-
-
-struct Socket {
-    int clientSd; //server socket File Descriptor
-    sockaddr_in sendSockAddr; //address used for accepting socket
-};
-
-int makeConnection(char *serverName, int serverPort, Socket initial);
-int writeRequest(char* fileName, Socket initial);
-
-int main(int argc, char *argv[]){
-    if (argc!=3)
-        return -1;
-
-    char *serverName = argv[1];
-    char *fileName=argv[2];
-    int serverPort; //WHAT PORT NUM
-    struct Socket initial;
-
-    if(makeConnection(serverName, serverPort, initial)==-1){
-        cerr<<"Unable to Connect"<<endl;
-        return -1;
-    }
-    if (writeRequest(fileName, initial)==-1){
-        cerr<<"Unable to Send Request"<<endl;
-        return -1;
-    }
+    socketSetup = socket(serverInfo->ai_family, serverInfo->ai_socktype, serverInfo->ai_protocol);
+    //setting up socket using the info from above, listening for HTTP stuffs
+    int httpSocket = connect(socketSetup, serverInfo->ai_addr, serverInfo->ai_addrlen);
+    freeaddrinfo(serverInfo);
+    return httpSocket;
 }
 
-/*
- * This function takes the server name and server port and returns a socket to that server
- *
- * PreConditions: server_name - the Name of the server being connected to
- *                              may be IP address or name
- *                server_port - the port at the server being connected to
- *                              Should be last 4 digits of student ID
- *
- * PostConditions: returns socket
- */
-
-int makeConnection(char *serverName, int serverPort, Socket initial) {
-    struct hostent *host = gethostbyname(serverName);
-    bzero((char *) &initial.sendSockAddr, sizeof(initial.sendSockAddr));
-    initial.sendSockAddr.sin_family = AF_INET; // Address Family Internet
-    initial.sendSockAddr.sin_addr.s_addr =
-            inet_addr(inet_ntoa(*(struct in_addr *) *host->h_addr_list));
-    initial.sendSockAddr.sin_port = htons(serverPort);
-
-    initial.clientSd = socket(AF_INET, SOCK_STREAM, 0);  //socket number
-
-    return(connect(initial.clientSd, (sockaddr *) &initial.sendSockAddr, sizeof(initial.sendSockAddr)));
+string parseHeader(int socketD) {
+    bool endFlag = false;
+    char readByte = 0;
+    char prevReadByte = 0;
+    string headerMessage = "";
+    while (!endFlag) {
+        recv(socketD, &readByte, 1, 0);
+        headerMessage += readByte;
+        if (readByte == '\r' && prevReadByte == '\n') {
+            endFlag = true;
+        }
+        prevReadByte = readByte;
+    }
+    return headerMessage;
 
 }
 
-int writeRequest(char* fileName, Socket initial){
-    string request="";
-    request+="GET ";
-    request+=fileName;
-    request+=" HTTP/1.0";
-    return write(initial.clientSd, request.c_str(), sizeof(request.c_str()));
+/**
+ * Gets requested file
+ * @param socket: the socket to retrieve the file from
+ * @return -1 if failed. else outputs file to OUTPUT_FILE_DESTINATION
+ * */
+int getRequestFile(int socketD, char* argValues[]) {
+    string getRequest = string("GET " + string(argValues[2]) + "HTTP/1.1\r\nHost: " + string(argValues[1]) + "\r\n\r\n");
+    send(socketD, getRequest.c_str(), sizeof(getRequest.c_str()), 0);
+    //read/parse header
+    parseHeader(socketD);
+    ofstream outFile;
+    outFile.open(OUTPUT_FILE_DESTINATION);
+    //write the html to the file
+
+
+    close(socketD);
+    outFile.close();
+    return 0;
+}
+
+
+/**
+ * Receives a server name and file name from the command line and "downloads" it to OUTPUT_FILE_DESTINATION
+ * @param argc: the number of arguments fed to main
+ * @param argv: the string arguments fed to main
+ * @return -1 if not enough arguments, else outputs the file to OUTPUT_FILE_DESTINATION
+ * */
+int main(int argc, char* argv[]) {
+    int httpSocket;
+
+    if (argc != 3) { //if the input is not just a server and a file
+        //do something; print to console or something
+        return -1;
+
+    } else {
+
+        //set up the socket
+        httpSocket = connectSocket(argv);
+
+    }
+    return getRequestFile(httpSocket, argv);
 }
