@@ -46,7 +46,7 @@ static void *getRequest(void *threadData);
 
 int parseInput(int newSocket, string &input);
 
-string createResponse(string input)
+string createResponse(string input);
 
 int main(int argc, char *argv[]) {
     /*
@@ -86,6 +86,7 @@ int main(int argc, char *argv[]) {
         }
         activeSD.insert(pair<pthread_t, int>(newTID, newSd));
     }
+    return 0;
 }
 
 int establishConnection(int portNum, Socket initial) {
