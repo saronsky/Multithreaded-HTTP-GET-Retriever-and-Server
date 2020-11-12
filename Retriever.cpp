@@ -32,7 +32,7 @@ int connectSocket(char *argValues[]) {
     return httpSocket;
 }
 
-string parseHeader(int socketD) {
+string parseHeaderLine(int socketD) {
     bool endFlag = false;
     char readByte = 0;
     char prevReadByte = 0;
@@ -46,7 +46,6 @@ string parseHeader(int socketD) {
         prevReadByte = readByte;
     }
     return headerMessage;
-
 }
 
 /**
@@ -58,7 +57,15 @@ int getRequestFile(int socketD, char* argValues[]) {
     string getRequest = string("GET " + string(argValues[2]) + "HTTP/1.0\r\n\r\n");
     send(socketD, getRequest.c_str(), sizeof(getRequest.c_str()), 0);
     //read/parse header
-    parseHeader(socketD);
+    bool endFileFlag = false;
+    while (!endFileFlag) {
+        string curHeaderLine = parseHeaderLine(socketD);
+        if (curHeaderLine.substr(0,15) == ) {
+
+            endFileFlag = true;
+
+        }
+    }
     ofstream outFile;
     outFile.open(OUTPUT_FILE_DESTINATION);
     //write the html to the file
