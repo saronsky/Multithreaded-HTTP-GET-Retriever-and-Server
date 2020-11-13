@@ -7,6 +7,7 @@
 
 using std::ofstream;
 using std::string;
+using std::cout;
 string OUTPUT_FILE_DESTINATION = "outputFile.txt";
 
 int connectSocket(char *argValues[]);
@@ -22,7 +23,7 @@ int getRequestFile(int socketD, char* argValues[]);
 int main(int argc, char* argv[]) {
     int httpSocket;
 
-    if (argc != 3) { //if the input is not just a server and a file
+    if (argc != 4) { //if the input is not just a server and a file
         //do something; print to console or something
         return -1;
 
@@ -41,7 +42,6 @@ int main(int argc, char* argv[]) {
  * @return -1 for failure. else return socket number
  * */
 int connectSocket(char *argValues[]) {
-    int socketSetup;
     struct addrinfo hints;
     struct addrinfo *serverInfo;
     memset(&hints, 0, sizeof(hints));
@@ -49,27 +49,51 @@ int connectSocket(char *argValues[]) {
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    int socketAddrInfo = getaddrinfo(argValues[1], "80", &hints, &serverInfo); //using the magic number 80 for HTML/HTTP request
-
-    socketSetup = socket(serverInfo->ai_family, serverInfo->ai_socktype, serverInfo->ai_protocol);
+    int httpSocket;
+    if (getaddrinfo(argValues[1], argValues[3], &hints, &serverInfo) != 0) {  //using the magic number 80 for HTML/HTTP request
+        return -1;
+    }
+    struct addrinfo *connectionIterator;
+    for (connectionIterator = serverInfo; connectionIterator != nullptr; connectionIterator = connectionIterator->ai_next) {
+        if ((httpSocket = socket(connectionIterator->ai_family, connectionIterator->ai_socktype, connectionIterator->ai_protocol)) == -1) {
+            cout << "Invalid socket descriptor...\n";
+        } else {
+            if (connect(httpSocket, serverInfo->ai_addr, serverInfo->ai_addrlen) == -1) {
+                cout << "Invalid socket connection\n";
+            } else {
+                cout << "CONNECTION FOUND!\n";
+                break;
+            }
+        }
+    }
+    if (connectionIterator == nullptr) {
+        cout << "Unable to connect\n";
+        return -1;
+    }
     //setting up socket using the info from above, listening for HTTP stuffs
-    int httpSocket = connect(socketSetup, serverInfo->ai_addr, serverInfo->ai_addrlen);
     freeaddrinfo(serverInfo);
     return httpSocket;
 }
 
+/**
+ * Parses 1 line of the HTTP return header
+ * @param socketD: socket descriptor
+ * @return a string that is the next line of the header
+ * */
 string parseHeaderLine(int socketD) {
-    bool endFlag = false;
-    char readByte = 0;
     char prevReadByte = 0;
-    string headerMessage;
-    while (!endFlag) {
-        recv(socketD, &readByte, 1, 0);
-        headerMessage += readByte;
-        if (readByte == '\r' && prevReadByte == '\n') {
-            endFlag = true;
+    string headerMessage = "";
+    while (1) {
+        char readByte = 0;
+        read(socketD, &readByte, sizeof(readByte));
+        if (readByte == '\n' || readByte == '\r') {
+            if (readByte == '\n' && prevReadByte == '\r') {
+                break;
+            }
+        } else {
+            headerMessage += readByte;
+            prevReadByte = readByte;
         }
-        prevReadByte = readByte;
     }
     return headerMessage;
 }
@@ -82,27 +106,36 @@ string parseHeaderLine(int socketD) {
 int getRequestFile(int socketD, char* argValues[]) {
 
     //send GET request using non-persistent connection
-    string getRequest = string("GET " + string(argValues[2]) + "HTTP/1.0\r\n\r\n");
-    send(socketD, getRequest.c_str(), sizeof(getRequest.c_str()), 0);
-
+    string getRequest = string("GET /" + string(argValues[2]) + " HTTP/1.1\r\n"
+            + "Host: " + string(argValues[1]) + "\r\n" + "\r\n");
+    if ((write(socketD, getRequest.c_str(), sizeof(getRequest.c_str()))) == sizeof(getRequest.c_str())) {
+        cout << "Request: " << getRequest << "Sent\n";
+    }
     //read/parse header
     int contentLength = 0;
-    bool endFileFlag = false;
-    while (!endFileFlag) {
+    while (1) {
         string curHeaderLine = parseHeaderLine(socketD);
+        cout << curHeaderLine << "";
         if (curHeaderLine.substr(0, 15) == "Content-Length:") {
             contentLength = atoi(curHeaderLine.substr(16,curHeaderLine.length()).c_str());
-            endFileFlag = true;
-
+        }
+        if (curHeaderLine.empty()) {
+            break;
         }
     }
+
+    char fileBuf[contentLength];
+
+    //output contents to OUTPUT_FILE_DESTINATION
     ofstream outFile;
     outFile.open(OUTPUT_FILE_DESTINATION);
-    //write the html to the file
 
+    outFile << fileBuf;
 
+    //always close the files/streams!
     close(socketD);
     outFile.close();
+
     return 0;
 }
 
