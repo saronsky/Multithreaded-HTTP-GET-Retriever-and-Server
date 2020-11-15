@@ -60,7 +60,7 @@ int connectSocket(char *server_name) {
         return clientSd;
 }
 
-string parseHeader(int socketD) {
+string parseHeaderLine(int socketD) {
     bool endFlag = false;
     char readByte = 0;
     char prevReadByte = 0;
@@ -74,7 +74,6 @@ string parseHeader(int socketD) {
         prevReadByte = readByte;
     }
     return headerMessage;
-
 }
 
 /**
@@ -91,7 +90,15 @@ int getRequestFile(int socketD, char *path) {
     else
         cerr << "Send Success" << endl;
     //read/parse header
-    parseHeader(socketD);
+    bool endFileFlag = false;
+    while (!endFileFlag) {
+        string curHeaderLine = parseHeaderLine(socketD);
+        if (curHeaderLine.substr(0,15) == ) {
+
+            endFileFlag = true;
+
+        }
+    }
     ofstream outFile;
     outFile.open(OUTPUT_FILE_DESTINATION);
     //write the html to the file
