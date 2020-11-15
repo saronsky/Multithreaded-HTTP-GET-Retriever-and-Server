@@ -11,6 +11,8 @@ using namespace std;
 string OUTPUT_FILE_DESTINATION = "outputFile.txt";
 int server_port = 1025; ///MIGHT NEED TO IMPLEMENT DELETE
 
+const int BUFSIZE = 1500;
+
 /**
  * Sets up a socket connection based on command line arguments
  * @param argValues - values from the command line
@@ -61,7 +63,7 @@ int connectSocket(char *server_name) {
 }
 
 string parseHeaderLine(int socketD) {
-    bool endFlag = false;
+    /*bool endFlag = false;
     char readByte = 0;
     char prevReadByte = 0;
     string headerMessage = "";
@@ -73,6 +75,15 @@ string parseHeaderLine(int socketD) {
         }
         prevReadByte = readByte;
     }
+    return headerMessage;*/
+
+    string headerMessage;
+    headerMessage.resize(BUFSIZE);
+    int length = read(socketD, &headerMessage[0], BUFSIZE - 1);
+    if (length == -1) {
+        cerr << "Unable to Read from Socket" << endl;
+    }
+    headerMessage.resize(length);
     return headerMessage;
 }
 
@@ -90,22 +101,8 @@ int getRequestFile(int socketD, char *path) {
     else
         cerr << "Send Success" << endl;
     //read/parse header
-    bool endFileFlag = false;
-    while (!endFileFlag) {
-        string curHeaderLine = parseHeaderLine(socketD);
-        if (curHeaderLine.substr(0,15) == ) {
-
-            endFileFlag = true;
-
-        }
-    }
-    ofstream outFile;
-    outFile.open(OUTPUT_FILE_DESTINATION);
-    //write the html to the file
-
-
+    cout<<parseHeaderLine(socketD);
     close(socketD);
-    outFile.close();
     return 0;
 }
 

@@ -21,11 +21,11 @@
 using namespace std;
 
 const string THREAD_MESSAGE = "Creating new thread with count: ";
-const string OK_RESPONSE = "HTTP/1.1 200 OK\r\n";
-const string DOES_NOT_EXIST_RESPONSE = "HTTP/1.1 404 Not Found\r\n";
-const string UNAUTHORIZED_RESPONSE = "HTTP/1.1 401 Unauthorized\r\n";
-const string FORBIDDEN_RESPONSE = "HTTP/1.1 403 Forbidden\r\n";
-const string BAD_REQUEST_RESPONSE = "HTTP/1.1 400 Bad Request\r\n";
+const string OK_RESPONSE = "HTTP/1.0 200 OK\r\n";
+const string DOES_NOT_EXIST_RESPONSE = "HTTP/1.0 404 Not Found\r\n";
+const string UNAUTHORIZED_RESPONSE = "HTTP/1.0 401 Unauthorized\r\n";
+const string FORBIDDEN_RESPONSE = "HTTP/1.0 403 Forbidden\r\n";
+const string BAD_REQUEST_RESPONSE = "HTTP/1.0 400 Bad Request\r\n";
 const string SECRET_FILE = "SecretFile.html";
 const int CONNECTION_REQUEST_MAX = 10;
 const int BUFSIZE = 1500;
@@ -44,7 +44,7 @@ int establishConnection(int portNum, Socket &initial);
 static void *completeRequest(void *threadData);
 
 
-int parseInput(int newSocket, string &input);
+int collectInput(int newSocket, string &input);
 
 void createResponse(string input, string &output);
 
@@ -143,13 +143,13 @@ static void *completeRequest(void *threadData) {
 
     int newSocket = *((int *) threadData);
     string input, output;
-    parseInput(newSocket, input);
+    collectInput(newSocket, input);
     createResponse(input, output);
     write(newSocket, output.c_str(), output.size());
     close(newSocket);
 }
 
-int parseInput(int newSocket, string &input) {
+int collectInput(int newSocket, string &input) {
 
     input.resize(BUFSIZE);
     int length = read(newSocket, &input[0], BUFSIZE - 1);
@@ -158,11 +158,13 @@ int parseInput(int newSocket, string &input) {
         return -1;
     }
     input.resize(length);
+    cout<<"Input: "<<input<<endl;
     return 0;
 }
 
 void createResponse(string input, string &output) {
-    if (input.substr(0, 3) != "GET" || input.substr(input.length() - 8) == "HTTP/1.0") {
+    if (input.substr(0, 3) != "GET" || input.substr(input.length() - 13) != " HTTP/1.0\r\n\r\n") {
+        cout<<"Last 13: "<<input.substr(input.length()-13);
         output = BAD_REQUEST_RESPONSE;
         return;
     }
@@ -187,8 +189,10 @@ void createResponse(string input, string &output) {
     }
     while (true) {
         char c = fgetc(file);
-        if (c == EOF)
+        if (c == EOF) {
+            output+=(" "+OK_RESPONSE);
             return;
+        }
         output.push_back(c);
     }
 }
