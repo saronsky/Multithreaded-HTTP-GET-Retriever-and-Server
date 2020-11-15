@@ -39,21 +39,21 @@ struct Socket {
 
 map<pthread_t, int> activeSD; //used to manage all active socket threads
 
-int establishConnection(int portNum, Socket initial);
+int establishConnection(int portNum, Socket &initial);
 
-static void *getRequest(void *threadData);
+static void *completeRequest(void *threadData);
 
 
 int parseInput(int newSocket, string &input);
 
-string createResponse(string input)
+void createResponse(string input, string &output);
 
 int main(int argc, char *argv[]) {
     /*
      * argc check
      */
     if (argc != 2) {
-        cerr << "Incorrect number of arguments ";
+        cerr << "Incorrect number of arguments " << endl;
         return -1;
     }
 
@@ -65,7 +65,8 @@ int main(int argc, char *argv[]) {
     struct Socket initial;
     if (establishConnection(portNum, initial) == -1)
         return -1;
-
+    else
+        cout << "Successfully established Connection" << endl;
 
 
     //accept loop creates a new socket for an incoming connection
@@ -74,21 +75,22 @@ int main(int argc, char *argv[]) {
     /*
      * 3. Loop back to the accept command and wait for a new connection
      */
-    int newSd;
+    int newSd = 0;
     while ((newSd = accept(initial.serverSd, (sockaddr *) &initial.serverStorage, &initial.addressSize)) >= 0) {
         pthread_t newTID;
         if (newSd == -1) {
-            cerr << "Problem with Client connecting";
+            cerr << "Problem with Client connecting" << endl;
             return -1;
-        } else if (pthread_create(&newTID, NULL, &getRequest, &newSd) != 0) {
-            cerr << "thread not created\n";
+        } else if (pthread_create(&newTID, NULL, &completeRequest, &newSd) != 0) {
+            cerr << "thread not created" << endl;
             return -1;
         }
+        cerr << "Connection Accepted" << endl;
         activeSD.insert(pair<pthread_t, int>(newTID, newSd));
     }
 }
 
-int establishConnection(int portNum, Socket initial) {
+int establishConnection(int portNum, Socket &initial) {
     /*
      * 1. Accept a new Connection
      */
@@ -106,25 +108,26 @@ int establishConnection(int portNum, Socket initial) {
 
     initial.serverSd = socket(AF_INET, SOCK_STREAM, 0);
     if (initial.serverSd == -1) {
-        cerr << "Unable to create socket";
+        cerr << "Unable to create socket" << endl;
         return -1;
     }
 
     //setup socket settings: reuse the address to make shutdown easier
     const int on = 1;
     if (setsockopt(initial.serverSd, SOL_SOCKET, SO_REUSEADDR, (char *) &on, sizeof(int)) == -1) {
-        cerr << "Unable to set Socket Options";
+        cerr << "Unable to set Socket Options" << endl;
         return -1;
     }
 
     if (bind(initial.serverSd, (sockaddr *) &initial.sockAddrIn, sizeof(initial.sockAddrIn)) == -1) {
-        cerr << "Unable to bind server socket to the address";
+        cerr << "Unable to bind server socket to the address" << endl;
+        cerr << errno;
         return -1;
     }
     sockaddr_in newSockAddr;
 
     if (listen(initial.serverSd, CONNECTION_REQUEST_MAX == -1)) {
-        cerr << "Unable to listen to socket";
+        cerr << "Unable to listen to socket" << endl;
         return -1;
     }
     return 0;
@@ -136,52 +139,56 @@ int establishConnection(int portNum, Socket initial) {
  * PreConditions: threadData  - socket
  *
  */
-static void *getRequest(void *threadData) {
+static void *completeRequest(void *threadData) {
 
     int newSocket = *((int *) threadData);
-    string input;
+    string input, output;
     parseInput(newSocket, input);
-    string output=createResponse(input);
+    createResponse(input, output);
+    write(newSocket, output.c_str(), output.size());
+    close(newSocket);
 }
 
 int parseInput(int newSocket, string &input) {
 
-    input = "";
-    char current = 0;
-    char prev = 0;
-    while (true) {
-        if (read(newSocket, &current, 1) == -1) {
-            cerr << "Unable to Read from Socket" << endl;
-            return -1;
-        }
-        input += current;
-        if (input.substr(input.length() - 4, 4) == "\r\n\r\n")
-            break;
+    input.resize(BUFSIZE);
+    int length = read(newSocket, &input[0], BUFSIZE - 1);
+    if (length == -1) {
+        cerr << "Unable to Read from Socket" << endl;
+        return -1;
     }
+    input.resize(length);
     return 0;
 }
 
-string createResponse(string input) {
-    if (input.substr(0,3)!="GET")
-        return BAD_REQUEST_RESPONSE;
-    string path=input.substr(4, input.length()-9);
-    if (path.substr(0,2)=="..")
-        return FORBIDDEN_RESPONSE;
-    if (path.substr(path.length()-15)==SECRET_FILE){
-        return UNAUTHORIZED_RESPONSE;
+void createResponse(string input, string &output) {
+    if (input.substr(0, 3) != "GET" || input.substr(input.length() - 8) == "HTTP/1.0") {
+        output = BAD_REQUEST_RESPONSE;
+        return;
+    }
+    string path = input.substr(4).substr(0, input.length() - 17);
+    cout << "Path: " << path << endl;
+    if (path.substr(0, 2) == "..") {
+        output = FORBIDDEN_RESPONSE;
+        return;
+    }
+    if (path.substr(path.length() - 15) == SECRET_FILE) {
+        output = UNAUTHORIZED_RESPONSE;
+        return;
     }
     FILE *file = fopen(path.c_str(), "r");
-    if (file==nullptr){
-        if (errno==EACCES)
-            return UNAUTHORIZED_RESPONSE;
-        return DOES_NOT_EXIST_RESPONSE;
+    if (file == NULL) {
+        if (errno == EACCES) {
+            output = UNAUTHORIZED_RESPONSE;
+            return;
+        }
+        output = DOES_NOT_EXIST_RESPONSE;
+        return;
     }
-    string output="";
-    while (!feof(file)){
+    while (true) {
         char c = fgetc(file);
-        if (c==EOF)
-            continue;
-        output+=c;
+        if (c == EOF)
+            return;
+        output.push_back(c);
     }
-    return output;
 }
