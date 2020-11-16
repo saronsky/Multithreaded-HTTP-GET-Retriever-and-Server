@@ -21,11 +21,11 @@
 using namespace std;
 
 const string THREAD_MESSAGE = "Creating new thread with count: ";
-const string OK_RESPONSE = "HTTP/1.0 200 OK\r\n";
-const string DOES_NOT_EXIST_RESPONSE = "HTTP/1.0 404 Not Found\r\n";
-const string UNAUTHORIZED_RESPONSE = "HTTP/1.0 401 Unauthorized\r\n";
-const string FORBIDDEN_RESPONSE = "HTTP/1.0 403 Forbidden\r\n";
-const string BAD_REQUEST_RESPONSE = "HTTP/1.0 400 Bad Request\r\n";
+const string OK_RESPONSE = "HTTP/1.1 200 OK\n";
+const string DOES_NOT_EXIST_RESPONSE = "HTTP/1.1 404 Not Found\n";
+const string UNAUTHORIZED_RESPONSE = "HTTP/1.1 401 Unauthorized\n";
+const string FORBIDDEN_RESPONSE = "HTTP/1.1 403 Forbidden\n";
+const string BAD_REQUEST_RESPONSE = "HTTP/1.1 400 Bad Request\n";
 const string SECRET_FILE = "SecretFile.html";
 const int CONNECTION_REQUEST_MAX = 10;
 const int BUFSIZE = 1500;
@@ -145,7 +145,10 @@ static void *completeRequest(void *threadData) {
     string input, output;
     collectInput(newSocket, input);
     createResponse(input, output);
-    write(newSocket, output.c_str(), output.size());
+    if (write(newSocket, output.c_str(), output.size()) == -1)
+        cout << "Failed to write";
+    else
+        cout << "Wrote Successfully!" << endl;
     close(newSocket);
 }
 
@@ -158,16 +161,16 @@ int collectInput(int newSocket, string &input) {
         return -1;
     }
     input.resize(length);
-    cout<<"Input: "<<input<<endl;
     return 0;
 }
 
 void createResponse(string input, string &output) {
-    if (input.substr(0, 3) != "GET" || input.substr(input.length() - 13) != " HTTP/1.0\r\n\r\n") {
-        cout<<"Last 13: "<<input.substr(input.length()-13);
+    if (input.substr(0, 3) != "GET" || input.find(" HTTP/1.1\r\n") == string::npos) {
+        cout << "Last 13: " << input.substr(input.length() - 13);
         output = BAD_REQUEST_RESPONSE;
         return;
     }
+    input = input.substr(0, input.find(" HTTP/1.1\r\n") + 13);
     string path = input.substr(4).substr(0, input.length() - 17);
     cout << "Path: " << path << endl;
     if (path.substr(0, 2) == "..") {
@@ -187,12 +190,16 @@ void createResponse(string input, string &output) {
         output = DOES_NOT_EXIST_RESPONSE;
         return;
     }
+    output = OK_RESPONSE;
+    output += "Content-Type: text/plain\nContent-Length: ";
+    string body = "\r\n\r\n";
     while (true) {
         char c = fgetc(file);
         if (c == EOF) {
-            output+=(" "+OK_RESPONSE);
-            return;
+            break;
         }
-        output.push_back(c);
+        body.push_back(c);
     }
+    output += to_string(body.length() - 4);
+    output += body;
 }

@@ -10,6 +10,7 @@
 using namespace std;
 string OUTPUT_FILE_DESTINATION = "outputFile.txt";
 int server_port = 1025; ///MIGHT NEED TO IMPLEMENT DELETE
+const string OK_RESPONSE = "HTTP/1.1 200 OK\n";
 
 const int BUFSIZE = 1500;
 
@@ -19,29 +20,6 @@ const int BUFSIZE = 1500;
  * @return -1 for failure. else return socket number
  * */
 int connectSocket(char *server_name) {
-    /*int socketSetup;
-    struct addrinfo hints;
-    struct addrinfo *serverInfo;
-    memset(&hints, 0, sizeof(hints));
-    //setting up address information
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-    int socketAddrInfo = getaddrinfo(argValues[1], "80", &hints, &serverInfo); //using the magic number 80 for HTML/HTTP request
-
-    socketSetup = socket(serverInfo->ai_family, serverInfo->ai_socktype, serverInfo->ai_protocol);
-    if (socketSetup==-1)
-        cerr<<"Socket Failure: "<<errno<<endl;
-    else
-        cerr<<"Socket Success: "<<socketSetup<<endl;
-    //setting up socket using the info from above, listening for HTTP stuffs
-    int httpSocket = connect(socketSetup, serverInfo->ai_addr, serverInfo->ai_addrlen);
-    if (httpSocket==-1)
-        cerr<<"Connect Failure: "<<errno<<endl;
-    else
-        cerr<<"Connect Success"<<endl;
-    freeaddrinfo(serverInfo);
-    return httpSocket;*/
     struct hostent *host = gethostbyname(server_name);
     sockaddr_in sendSockAddr;
     bzero((char *) &sendSockAddr, sizeof(sendSockAddr));
@@ -52,9 +30,6 @@ int connectSocket(char *server_name) {
     int clientSd = socket(AF_INET, SOCK_STREAM, 0);  //socket number
     if (clientSd == -1)
         cerr << "Socket Failure: " << errno << endl;
-    else
-        cerr << "Socket Success: " << clientSd << endl;
-
     if (connect(clientSd, (sockaddr *) &sendSockAddr, sizeof(sendSockAddr)) == -1) {
         cerr << "Connect Failure: " << errno << endl;
         return -1;
@@ -62,29 +37,50 @@ int connectSocket(char *server_name) {
         return clientSd;
 }
 
-string parseHeaderLine(int socketD) {
-    /*bool endFlag = false;
-    char readByte = 0;
-    char prevReadByte = 0;
-    string headerMessage = "";
-    while (!endFlag) {
-        read(socketD, &readByte, 1);
-        headerMessage += readByte;
-        if (readByte == '\r' && prevReadByte == '\n') {
-            endFlag = true;
-        }
-        prevReadByte = readByte;
-    }
-    return headerMessage;*/
+int getStatusCode(char* buffer, string &statusCode){
+    statusCode=buffer;
+    std::size_t pos=statusCode.find("\n");
+    statusCode=statusCode.substr(0,pos+1);
+    return pos+1;
+}
 
-    string headerMessage;
-    headerMessage.resize(BUFSIZE);
-    int length = read(socketD, &headerMessage[0], BUFSIZE - 1);
-    if (length == -1) {
-        cerr << "Unable to Read from Socket" << endl;
+string getBody(char* buffer){
+    int contentLength;
+    string buffer2=buffer;
+    string find="Content-Length: ";
+    std::size_t pos=buffer2.find(find);
+    size_t pos2=buffer2.find("\n",pos);
+    contentLength=stoi(buffer2.substr(pos+find.length(), pos2-(pos+find.length())));
+    string output=buffer;
+    output=output.substr(pos2+2, contentLength+1);
+    return output;
+}
+
+int collectFile(int socketD) {
+    char buffer[BUFSIZE];
+    int pos=0;
+    while(true) {
+        cerr<<"Pos: "<<pos<<endl;
+        int length = read(socketD, buffer, BUFSIZE - pos);
+        if (length == -1) {
+            cerr << "Unable to Read from Socket" << endl;
+            return -1;
+        }
+        else if (length==0)
+            break;
+        pos+=length;
     }
-    headerMessage.resize(length);
-    return headerMessage;
+    string statusCode;
+    *(buffer)+=getStatusCode(buffer, statusCode);
+    if (statusCode!=OK_RESPONSE){
+        cout<<"Status Code: "<<statusCode<<endl;
+        return 0;
+    }
+    string body=getBody(buffer);
+    cout<<"Body: "<<body;
+    fstream myFile(OUTPUT_FILE_DESTINATION);
+    myFile<<body;
+    myFile.close();
 }
 
 /**
@@ -92,18 +88,9 @@ string parseHeaderLine(int socketD) {
  * @param socket: the socket to retrieve the file from
  * @return -1 if failed. else outputs file to OUTPUT_FILE_DESTINATION
  * */
-int getRequestFile(int socketD, char *path) {
-    string getRequest="GET "+string(path)+" HTTP/1.0\r\n\r\n";
-    cout<<"Request: "<<getRequest.c_str()<<endl<<"Size: "<<getRequest.length()<<endl;
-    int count=write(socketD, getRequest.c_str(), getRequest.length());
-    if (count == -1)
-        cerr << "Send ERROR" << endl;
-    else
-        cerr << "Send Success" << endl;
-    //read/parse header
-    cout<<parseHeaderLine(socketD);
-    close(socketD);
-    return 0;
+int requestFile(int socketD, char *path) {
+    string getRequest="GET "+string(path)+" HTTP/1.1\r\n\r\n";
+    return write(socketD, getRequest.c_str(), getRequest.length());
 }
 
 
@@ -114,15 +101,16 @@ int getRequestFile(int socketD, char *path) {
  * @return -1 if not enough arguments, else outputs the file to OUTPUT_FILE_DESTINATION
  * */
 int main(int argc, char *argv[]) {
-    int httpSocket;
-    cout << "Argc: " << argc << endl;
     if (argc != 3) { //if the input is not just a server and a file
         //do something; print to console or something
         cerr << "Not enough arguments" << endl;
         return -1;
     }
-    cerr << "Enought Arguments" << endl;
     //set up the socket
-    httpSocket = connectSocket(argv[1]);
-    return getRequestFile(httpSocket, argv[2]);
+    int httpSocket = connectSocket(argv[1]);
+    if (requestFile(httpSocket, argv[2])!=1)
+        collectFile(httpSocket);
+    else
+        cerr<<"Send ERROR"<<endl;
+    close(httpSocket);
 }
