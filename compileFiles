@@ -1,2 +1,3 @@
 g++ -c Retriever.cpp -o Retriever
+
 g++ -c Server.cpp -o Server -pthread
