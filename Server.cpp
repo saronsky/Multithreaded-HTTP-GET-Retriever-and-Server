@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
             cerr << "Problem with Client connecting" << endl;
             return -1;
         } else if (pthread_create(&newTID, NULL, &completeRequest, &newSd) != 0) {
-            cerr << "thread not created" << endl;
+            cerr << "Thread not created" << endl;
             return -1;
         }
         cerr << "Connection Accepted" << endl;
@@ -147,6 +147,7 @@ static void *completeRequest(void *threadData) {
     else
         cout << "Wrote Successfully!" << endl;
     close(newSocket);
+    pthread_exit(0);
 }
 
 int collectInput(int newSocket, string &input) {

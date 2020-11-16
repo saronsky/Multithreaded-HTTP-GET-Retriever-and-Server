@@ -9,7 +9,7 @@
 
 using namespace std;
 string OUTPUT_FILE_DESTINATION = "outputFile.txt";
-int server_port = 1025; ///MIGHT NEED TO IMPLEMENT DELETE
+//int server_port = 1025; ///MIGHT NEED TO IMPLEMENT DELETE
 const string OK_RESPONSE = "HTTP/1.1 200 OK\n";
 
 const int BUFSIZE = 1500;
@@ -19,14 +19,14 @@ const int BUFSIZE = 1500;
  * @param argValues - values from the command line
  * @return -1 for failure. else return socket number
  * */
-int connectSocket(char *server_name) {
+int connectSocket(char *server_name, int port_number) {
     struct hostent *host = gethostbyname(server_name);
     sockaddr_in sendSockAddr;
     bzero((char *) &sendSockAddr, sizeof(sendSockAddr));
     sendSockAddr.sin_family = AF_INET; // Address Family Internet
     sendSockAddr.sin_addr.s_addr =
             inet_addr(inet_ntoa(*(struct in_addr *) *host->h_addr_list));
-    sendSockAddr.sin_port = htons(server_port);
+    sendSockAddr.sin_port = htons(port_number);
     int clientSd = socket(AF_INET, SOCK_STREAM, 0);  //socket number
     if (clientSd == -1)
         cerr << "Socket Failure: " << errno << endl;
@@ -97,13 +97,14 @@ int requestFile(int socketD, char *path) {
  * @return -1 if not enough arguments, else outputs the file to OUTPUT_FILE_DESTINATION
  * */
 int main(int argc, char *argv[]) {
-    if (argc != 3) { //if the input is not just a server and a file
+    if (argc != 4) { //if the input is not just a server and a file
         //do something; print to console or something
         cerr << "Not enough arguments" << endl;
         return -1;
     }
     //set up the socket
-    int httpSocket = connectSocket(argv[1]);
+    int portNum = stoi(argv[3]);
+    int httpSocket = connectSocket(argv[1], portNum);
     if (requestFile(httpSocket, argv[2])!=1)
         collectFile(httpSocket);
     else
