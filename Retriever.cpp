@@ -37,47 +37,43 @@ int connectSocket(char *server_name) {
         return clientSd;
 }
 
-int getStatusCode(char* buffer, string &statusCode){
-    statusCode=buffer;
-    std::size_t pos=statusCode.find("\n");
-    statusCode=statusCode.substr(0,pos+1);
-    return pos+1;
+string getBody(string buffer){
+    string find="Content-Length: ";
+    std::size_t pos=buffer.find(find);
+    size_t pos2=buffer.find("\n",pos);
+    int contentLength=stoi(buffer.substr(pos+find.length(), pos2-(pos+find.length())));
+    string output=buffer.substr(pos2+2, contentLength+1);
+    return output;
 }
 
-string getBody(char* buffer){
-    int contentLength;
-    string buffer2=buffer;
-    string find="Content-Length: ";
-    std::size_t pos=buffer2.find(find);
-    size_t pos2=buffer2.find("\n",pos);
-    contentLength=stoi(buffer2.substr(pos+find.length(), pos2-(pos+find.length())));
-    string output=buffer;
-    output=output.substr(pos2+2, contentLength+1);
-    return output;
+void addToString(string &sBuffer, char* buffer, int length){
+    for (int i=0; i<length; i++){
+        sBuffer.push_back(buffer[i]);
+    }
+    memset(buffer, 0, BUFSIZE);
 }
 
 int collectFile(int socketD) {
     char buffer[BUFSIZE];
+    string sBuffer;
     int pos=0;
     while(true) {
-        cerr<<"Pos: "<<pos<<endl;
-        int length = read(socketD, buffer, BUFSIZE - pos);
+        int length = read(socketD, buffer, BUFSIZE);
         if (length == -1) {
             cerr << "Unable to Read from Socket" << endl;
             return -1;
         }
         else if (length==0)
             break;
-        pos+=length;
+        addToString(sBuffer, buffer, length);
     }
-    string statusCode;
-    *(buffer)+=getStatusCode(buffer, statusCode);
+    cout<<sBuffer;
+    string statusCode=sBuffer.substr(0, sBuffer.find("\n")+1);
     if (statusCode!=OK_RESPONSE){
         cout<<"Status Code: "<<statusCode<<endl;
         return 0;
     }
-    string body=getBody(buffer);
-    cout<<"Body: "<<body;
+    string body=getBody(sBuffer);
     fstream myFile(OUTPUT_FILE_DESTINATION);
     myFile<<body;
     myFile.close();
