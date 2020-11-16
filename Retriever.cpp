@@ -9,7 +9,7 @@
 
 using namespace std;
 string OUTPUT_FILE_DESTINATION = "outputFile.txt";
-//int server_port = 1025; ///MIGHT NEED TO IMPLEMENT DELETE
+//int server_port = 4480; ///MIGHT NEED TO IMPLEMENT DELETE
 const string OK_RESPONSE = "HTTP/1.1 200 OK\n";
 
 const int BUFSIZE = 1500;
@@ -19,14 +19,14 @@ const int BUFSIZE = 1500;
  * @param argValues - values from the command line
  * @return -1 for failure. else return socket number
  * */
-int connectSocket(char *server_name, int port_number) {
+int connectSocket(char *server_name, int server_port) {
     struct hostent *host = gethostbyname(server_name);
     sockaddr_in sendSockAddr;
     bzero((char *) &sendSockAddr, sizeof(sendSockAddr));
     sendSockAddr.sin_family = AF_INET; // Address Family Internet
     sendSockAddr.sin_addr.s_addr =
             inet_addr(inet_ntoa(*(struct in_addr *) *host->h_addr_list));
-    sendSockAddr.sin_port = htons(port_number);
+    sendSockAddr.sin_port = htons(server_port);
     int clientSd = socket(AF_INET, SOCK_STREAM, 0);  //socket number
     if (clientSd == -1)
         cerr << "Socket Failure: " << errno << endl;
@@ -84,8 +84,8 @@ int collectFile(int socketD) {
  * @param socket: the socket to retrieve the file from
  * @return -1 if failed. else outputs file to OUTPUT_FILE_DESTINATION
  * */
-int requestFile(int socketD, char *path) {
-    string getRequest="GET "+string(path)+" HTTP/1.1\r\n\r\n";
+int requestFile(int socketD, char *path, char* server_name) {
+    string getRequest="GET /"+string(path)+" HTTP/1.1\r\n" + "Host: "+string(server_name)+"\r\n\r\n";
     return write(socketD, getRequest.c_str(), getRequest.length());
 }
 
@@ -103,9 +103,8 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     //set up the socket
-    int portNum = stoi(argv[3]);
-    int httpSocket = connectSocket(argv[1], portNum);
-    if (requestFile(httpSocket, argv[2])!=1)
+    int httpSocket = connectSocket(argv[1], stoi(argv[3]));
+    if (requestFile(httpSocket, argv[2], argv[1])!=1)
         collectFile(httpSocket);
     else
         cerr<<"Send ERROR"<<endl;

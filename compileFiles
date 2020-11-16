@@ -1,4 +1,0 @@
-g++ -c Retriever.cpp
-g++ -o Retriever.o retrvr
-g++ -c Server.cpp
-g++ -o Server -pthread server

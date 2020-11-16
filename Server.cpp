@@ -163,6 +163,7 @@ int collectInput(int newSocket, string &input) {
 }
 
 void createResponse(string input, string &output) {
+    cout<<"Input: "<<input<<endl;
     if (input.substr(0, 3) != "GET" || input.find(" HTTP/1.1\r\n") == string::npos) {
         cout << "Last 13: " << input.substr(input.length() - 13);
         output = BAD_REQUEST_RESPONSE;
@@ -175,7 +176,7 @@ void createResponse(string input, string &output) {
         output = FORBIDDEN_RESPONSE;
         return;
     }
-    if (path.substr(path.length() - 15) == SECRET_FILE) {
+    if (path.length()>=15 && path.substr(path.length() - 15, path.length()) == SECRET_FILE) {
         output = UNAUTHORIZED_RESPONSE;
         return;
     }
