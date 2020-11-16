@@ -37,8 +37,6 @@ struct Socket {
     socklen_t addressSize; //size of the address
 };
 
-map<pthread_t, int> activeSD; //used to manage all active socket threads
-
 int establishConnection(int portNum, Socket &initial);
 
 static void *completeRequest(void *threadData);
@@ -86,7 +84,6 @@ int main(int argc, char *argv[]) {
             return -1;
         }
         cerr << "Connection Accepted" << endl;
-        activeSD.insert(pair<pthread_t, int>(newTID, newSd));
     }
 }
 
