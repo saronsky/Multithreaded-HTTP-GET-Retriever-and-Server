@@ -4,98 +4,79 @@
 #include <netdb.h>
 #include <fstream>
 #include <cstring>
+#include <arpa/inet.h>    // inet_ntoa
 
-using std::ofstream;
-using std::string;
-using std::cout;
+
+using namespace std;
 string OUTPUT_FILE_DESTINATION = "outputFile.txt";
+int server_port = 1025; ///MIGHT NEED TO IMPLEMENT DELETE
+const string OK_RESPONSE = "HTTP/1.1 200 OK\n";
 
-int connectSocket(char *argValues[]);
-string parseHeaderLine(int socketD);
-int getRequestFile(int socketD, char* argValues[]);
-
-/**
- * Receives a server name and file name from the command line and "downloads" it to OUTPUT_FILE_DESTINATION
- * @param argc: the number of arguments fed to main
- * @param argv: the string arguments fed to main
- * @return -1 if not enough arguments, else outputs the file to OUTPUT_FILE_DESTINATION
- * */
-int main(int argc, char* argv[]) {
-    int httpSocket;
-
-    if (argc != 4) { //if the input is not just a server and a file
-        //do something; print to console or something
-        return -1;
-
-    } else {
-
-        //set up the socket
-        httpSocket = connectSocket(argv);
-
-    }
-    return getRequestFile(httpSocket, argv);
-}
+const int BUFSIZE = 1500;
 
 /**
  * Sets up a socket connection based on command line arguments
  * @param argValues - values from the command line
  * @return -1 for failure. else return socket number
  * */
-int connectSocket(char *argValues[]) {
-    struct addrinfo hints;
-    struct addrinfo *serverInfo;
-    memset(&hints, 0, sizeof(hints));
-    //setting up address information
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-    int httpSocket;
-    if (getaddrinfo(argValues[1], argValues[3], &hints, &serverInfo) != 0) {  //using the magic number 80 for HTML/HTTP request
+int connectSocket(char *server_name) {
+    struct hostent *host = gethostbyname(server_name);
+    sockaddr_in sendSockAddr;
+    bzero((char *) &sendSockAddr, sizeof(sendSockAddr));
+    sendSockAddr.sin_family = AF_INET; // Address Family Internet
+    sendSockAddr.sin_addr.s_addr =
+            inet_addr(inet_ntoa(*(struct in_addr *) *host->h_addr_list));
+    sendSockAddr.sin_port = htons(server_port);
+    int clientSd = socket(AF_INET, SOCK_STREAM, 0);  //socket number
+    if (clientSd == -1)
+        cerr << "Socket Failure: " << errno << endl;
+    if (connect(clientSd, (sockaddr *) &sendSockAddr, sizeof(sendSockAddr)) == -1) {
+        cerr << "Connect Failure: " << errno << endl;
         return -1;
-    }
-    struct addrinfo *connectionIterator;
-    for (connectionIterator = serverInfo; connectionIterator != nullptr; connectionIterator = connectionIterator->ai_next) {
-        if ((httpSocket = socket(connectionIterator->ai_family, connectionIterator->ai_socktype, connectionIterator->ai_protocol)) == -1) {
-            cout << "Invalid socket descriptor...\n";
-        } else {
-            if (connect(httpSocket, serverInfo->ai_addr, serverInfo->ai_addrlen) == -1) {
-                cout << "Invalid socket connection\n";
-            } else {
-                cout << "CONNECTION FOUND!\n";
-                break;
-            }
-        }
-    }
-    if (connectionIterator == nullptr) {
-        cout << "Unable to connect\n";
-        return -1;
-    }
-    //setting up socket using the info from above, listening for HTTP stuffs
-    freeaddrinfo(serverInfo);
-    return httpSocket;
+    } else
+        return clientSd;
 }
 
-/**
- * Parses 1 line of the HTTP return header
- * @param socketD: socket descriptor
- * @return a string that is the next line of the header
- * */
-string parseHeaderLine(int socketD) {
-    char prevReadByte = 0;
-    string headerMessage = "";
-    while (1) {
-        char readByte = 0;
-        read(socketD, &readByte, sizeof(readByte));
-        if (readByte == '\n' || readByte == '\r') {
-            if (readByte == '\n' && prevReadByte == '\r') {
-                break;
-            }
-        } else {
-            headerMessage += readByte;
-            prevReadByte = readByte;
-        }
+string getBody(string buffer){
+    string find="Content-Length: ";
+    std::size_t pos=buffer.find(find);
+    size_t pos2=buffer.find("\n",pos);
+    int contentLength=stoi(buffer.substr(pos+find.length(), pos2-(pos+find.length())));
+    string output=buffer.substr(pos2+2, contentLength+1);
+    return output;
+}
+
+void addToString(string &sBuffer, char* buffer, int length){
+    for (int i=0; i<length; i++){
+        sBuffer.push_back(buffer[i]);
     }
-    return headerMessage;
+    memset(buffer, 0, BUFSIZE);
+}
+
+int collectFile(int socketD) {
+    char buffer[BUFSIZE];
+    string sBuffer;
+    int pos=0;
+    while(true) {
+        int length = read(socketD, buffer, BUFSIZE);
+        if (length == -1) {
+            cerr << "Unable to Read from Socket" << endl;
+            return -1;
+        }
+        else if (length==0)
+            break;
+        addToString(sBuffer, buffer, length);
+    }
+    cout<<sBuffer;
+    string statusCode=sBuffer.substr(0, sBuffer.find("\n")+1);
+    if (statusCode!=OK_RESPONSE){
+        cout<<"Status Code: "<<statusCode<<endl;
+        return 0;
+    }
+    string body=getBody(sBuffer);
+    fstream myFile(OUTPUT_FILE_DESTINATION);
+    myFile<<body;
+    myFile.close();
 }
 
 /**
@@ -103,40 +84,29 @@ string parseHeaderLine(int socketD) {
  * @param socket: the socket to retrieve the file from
  * @return -1 if failed. else outputs file to OUTPUT_FILE_DESTINATION
  * */
-int getRequestFile(int socketD, char* argValues[]) {
-
-    //send GET request using non-persistent connection
-    string getRequest = string("GET /" + string(argValues[2]) + " HTTP/1.1\r\n"
-            + "Host: " + string(argValues[1]) + "\r\n" + "\r\n");
-    if ((write(socketD, getRequest.c_str(), sizeof(getRequest.c_str()))) == sizeof(getRequest.c_str())) {
-        cout << "Request: " << getRequest << "Sent\n";
-    }
-    //read/parse header
-    int contentLength = 0;
-    while (1) {
-        string curHeaderLine = parseHeaderLine(socketD);
-        cout << curHeaderLine << "";
-        if (curHeaderLine.substr(0, 15) == "Content-Length:") {
-            contentLength = atoi(curHeaderLine.substr(16,curHeaderLine.length()).c_str());
-        }
-        if (curHeaderLine.empty()) {
-            break;
-        }
-    }
-
-    char fileBuf[contentLength];
-
-    //output contents to OUTPUT_FILE_DESTINATION
-    ofstream outFile;
-    outFile.open(OUTPUT_FILE_DESTINATION);
-
-    outFile << fileBuf;
-
-    //always close the files/streams!
-    close(socketD);
-    outFile.close();
-
-    return 0;
+int requestFile(int socketD, char *path) {
+    string getRequest="GET "+string(path)+" HTTP/1.1\r\n\r\n";
+    return write(socketD, getRequest.c_str(), getRequest.length());
 }
 
 
+/**
+ * Receives a server name and file name from the command line and "downloads" it to OUTPUT_FILE_DESTINATION
+ * @param argc: the number of arguments fed to main
+ * @param argv: the string arguments fed to main
+ * @return -1 if not enough arguments, else outputs the file to OUTPUT_FILE_DESTINATION
+ * */
+int main(int argc, char *argv[]) {
+    if (argc != 3) { //if the input is not just a server and a file
+        //do something; print to console or something
+        cerr << "Not enough arguments" << endl;
+        return -1;
+    }
+    //set up the socket
+    int httpSocket = connectSocket(argv[1]);
+    if (requestFile(httpSocket, argv[2])!=1)
+        collectFile(httpSocket);
+    else
+        cerr<<"Send ERROR"<<endl;
+    close(httpSocket);
+}
