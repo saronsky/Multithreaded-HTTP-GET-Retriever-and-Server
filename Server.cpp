@@ -1,7 +1,3 @@
-//
-// Created by Simon on 11/11/2020.
-//
-
 #include <sys/types.h>      //socket, bind
 #include <sys/socket.h>     //socket, bind, listen, inet_ntoa
 #include <sys/time.h>       //gettimeofday
@@ -30,6 +26,7 @@ const string SECRET_FILE = "SecretFile.html";
 const int CONNECTION_REQUEST_MAX = 10;
 const int BUFSIZE = 1500;
 
+//All-in-one Socket struct
 struct Socket {
     int serverSd; //server socket File Descriptor
     sockaddr_storage serverStorage; //used for storing a bunch of socket addresses WHAT IS THIS USED FOR DELETE
@@ -38,14 +35,16 @@ struct Socket {
 };
 
 int establishConnection(int portNum, Socket &initial);
-
 static void *completeRequest(void *threadData);
-
-
 int collectInput(int newSocket, string &input);
-
 void createResponse(string input, string &output);
 
+/**
+ * Multi-threaded server that handles HTTP requests
+ * @param argc - number of arguments fed to main
+ * @param argv - string arguments fed to main
+ * @return -1 if failed, 0 on server exit
+ * */
 int main(int argc, char *argv[]) {
     /*
      * argc check
@@ -87,6 +86,12 @@ int main(int argc, char *argv[]) {
     }
 }
 
+/**
+ * Creates a connection to be listened to
+ * @param initial - Socket struct describing a socket
+ * @param portNum - port to be listened to
+ * @return -1 if failed, 0 if bind success
+ * */
 int establishConnection(int portNum, Socket &initial) {
     /*
      * 1. Accept a new Connection
@@ -130,14 +135,11 @@ int establishConnection(int portNum, Socket &initial) {
     return 0;
 }
 
-/*
- * This function communicates through the socket, and times the response time
- *
- * PreConditions: threadData  - socket
- *
+/**
+ * This function communicates through the socket to respond to HTTP requests
+ * @param threadData - thread to be run on
  */
 static void *completeRequest(void *threadData) {
-
     int newSocket = *((int *) threadData);
     string input, output;
     collectInput(newSocket, input);
@@ -150,8 +152,13 @@ static void *completeRequest(void *threadData) {
     pthread_exit(0);
 }
 
+/**
+ * Collects the HTTP message from a socket
+ * @param input - string buffer to be read into
+ * @param newSocket - socket descriptor to be read from
+ * @return -1 if failed, 0 if collected
+ * */
 int collectInput(int newSocket, string &input) {
-
     input.resize(BUFSIZE);
     int length = read(newSocket, &input[0], BUFSIZE - 1);
     if (length == -1) {
@@ -162,6 +169,11 @@ int collectInput(int newSocket, string &input) {
     return 0;
 }
 
+/**
+ * Creates a HTTP response based on the parameters of it
+ * @param input - input message to be responded to
+ * @param output - response output
+ * */
 void createResponse(string input, string &output) {
     cout<<"Input: "<<input<<endl;
     if (input.substr(0, 3) != "GET" || input.find(" HTTP/1.1\r\n") == string::npos) {
@@ -172,7 +184,7 @@ void createResponse(string input, string &output) {
     input = input.substr(0, input.find(" HTTP/1.1\r\n") + 13);
     string path = input.substr(4).substr(0, input.length() - 17);
     cout << "Path: " << path << endl;
-    if (path.substr(0, 2) == "..") {
+    if (path.find("../")) {
         output = FORBIDDEN_RESPONSE;
         return;
     }
